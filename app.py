@@ -59,33 +59,34 @@ df['Customer_Rating'] = df['Customer_Rating'].fillna(df['Customer_Rating'].media
 # Handling missing values
 print(df.isnull().sum())
 import mysql.connector
+import streamlit as st
 
 try:
     connection = mysql.connector.connect(
         host='localhost',
         user='root',
         password='Puchib763@',
-        port=3307,
+        port=3306,
         database='ola',
-        connection_timeout=5   # fail fast if unreachable
+        connection_timeout=5
     )
     if connection.is_connected():
-        print("Connected to MySQL!")
+        st.success("Connected to MySQL!")
+
+        cursor = connection.cursor()
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS rides (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_name VARCHAR(255),
+            ride_distance FLOAT
+        )
+        """
+        cursor.execute(create_table_query)
+        connection.commit()
+
 except Exception as e:
-    print("Error:", e)
+    st.error(f"Error: {e}")
 
-#✅ Create the cursor 
-cursor = connection.cursor()
-
-create_table_query = """
-CREATE TABLE IF NOT EXISTS rides (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    customer_name VARCHAR(255),
-    ride_distance FLOAT
-)
-"""
-cursor.execute(create_table_query)
-connection.commit()
 # Create table
 create_table_query = """
 CREATE TABLE IF NOT EXISTS ola_data (
@@ -108,345 +109,143 @@ connection.commit()
 
 print("Table created successfully!")
 
-import mysql.connector
-import pandas as pd
-import streamlit as st
-
-st.title("OLA Ride Data Dashboard")
-st.subheader("Question")
-st.write("Retrieve all successful bookings from the ola_data table.")
-
-try:
-    # ✅ Correct connection with password and port
-    conn = mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="Puchib763@",   # <-- your password
-        port=3307,               # <-- your port
-        database="ola"
-    )
-
-    query = "SELECT * FROM ola_data WHERE Booking_Status = 'Success';"
-    df = pd.read_sql(query, conn)
-
-    st.subheader("Data - Successful Bookings")
-    st.dataframe(df)
-
-    st.subheader("Visualization - Successful Bookings by Vehicle Type")
-    st.bar_chart(df["Vehicle_Type"].value_counts())
-
-    st.subheader("Visualization - Successful Bookings by Pickup Location")
-    st.bar_chart(df["Pickup_Location"].value_counts().head(10))
-
-except Exception as e:
-    st.error(f"Database connection failed: {e}")
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.express as px
 
-# Sample dataset
-data = {
-    "vehicle_type": ["Car", "Bike", "Car", "Bus", "Bike", "Car", "Bus", "Bike"],
-    "ride_distance": [12.5, 5.2, 8.7, 15.0, 6.1, 10.3, 18.4, 4.8]
+# 1. Page Configuration
+st.set_page_config(
+    page_title="Ride Booking Analytics Assistant",
+    page_icon="🚖",
+    layout="wide"
+)
+
+st.title("🚖 Interactive Ride Booking Assistant")
+
+# 2. Sample Dataset matching your screenshot
+@st.cache_data
+def load_data():
+    data = {
+        'Ride ID': [
+            'CNR7153255142', 'CNR2940424040', 'CNR2982357879', 'CNR2395710036',
+            'CNR1797421769', 'CNR8787177882', 'CNR3612067560', 'CNR5374902489',
+            'CNR5030602354', 'CNR6328453219', 'CNR4787583516', 'CNR7943634301',
+            'CNR4524472111', 'CNR3914552212', 'CNR8181602032', 'CNR8090918544',
+            'CNR3211335290', 'CNR3196156650', 'CNR9975925287', 'CNR1591113431'
+        ],
+        'Booking Value': [
+            450, 160, 390, 385, 825, 175, 145, 345,
+            840, 895, 165, 400, 330, 430, 380, 345,
+            370, 405, 345, 1250
+        ]
+    }
+    return pd.DataFrame(data)
+
+df = load_data()
+
+# 3. Define the 10 Allowed Questions & Answers
+ALLOWED_QUESTIONS = {
+    1: "What is the highest booking value?",
+    2: "Which Ride ID has the maximum booking value?",
+    3: "What is the lowest booking value?",
+    4: "What is the average booking value?",
+    5: "What is the total booking value across all rides?",
+    6: "How many total rides are in the dataset?",
+    7: "Show the bar chart of booking values across Ride IDs.",
+    8: "What is the median booking value?",
+    9: "Which rides have a booking value over 800?",
+    10: "Can I see the full dataset table?"
 }
-df = pd.DataFrame(data)
 
-# Question
-st.header("Find the average ride distance for each vehicle type")
+# 4. Sidebar listing allowed questions for easy reference
+with st.sidebar:
+    st.header("📋 Supported Questions")
+    st.write("You can ask any of the following 10 questions:")
+    for num, q in ALLOWED_QUESTIONS.items():
+        st.markdown(f"**{num}.** {q}")
+
+# 5. Question Handling Function
+def answer_question(user_query: str):
+    query = user_query.strip().lower()
+    
+    # Matching logic with allowed questions
+    if "highest booking value" in query or "maximum booking value" in query and "which ride id" not in query:
+        max_val = df['Booking Value'].max()
+        st.success(f"**Highest Booking Value:** ₹{max_val}")
+        
+    elif "which ride id has the maximum" in query or "which ride id has the highest" in query:
+        max_row = df.loc[df['Booking Value'].idxmax()]
+        st.success(f"**Ride ID:** `{max_row['Ride ID']}` has the maximum booking value of **₹{max_row['Booking Value']}**.")
+        
+    elif "lowest booking value" in query or "minimum booking value" in query:
+        min_val = df['Booking Value'].min()
+        st.success(f"**Lowest Booking Value:** ₹{min_val}")
+        
+    elif "average booking value" in query or "mean booking value" in query:
+        avg_val = df['Booking Value'].mean()
+        st.info(f"**Average Booking Value:** ₹{avg_val:.2f}")
+        
+    elif "total booking value" in query or "sum of booking values" in query:
+        total_val = df['Booking Value'].sum()
+        st.info(f"**Total Booking Value:** ₹{total_val:,}")
+        
+    elif "how many total rides" in query or "total number of rides" in query or "number of rides" in query:
+        total_rides = len(df)
+        st.info(f"**Total Rides Count:** {total_rides} rides")
+        
+    elif "bar chart" in query or "chart" in query or "graph" in query or "plot" in query:
+        fig = px.bar(
+            df, x='Ride ID', y='Booking Value', 
+            title='Booking Value by Ride ID',
+            labels={'Booking Value': 'Booking Value', 'Ride ID': 'Ride ID'},
+            color_discrete_sequence=['#2E8B57']
+        )
+        fig.update_xaxes(tickangle=-90)
+        st.plotly_chart(fig, use_container_width=True)
+        
+    elif "median booking value" in query:
+        median_val = df['Booking Value'].median()
+        st.info(f"**Median Booking Value:** ₹{median_val:.2f}")
+        
+    elif "over 800" in query or "greater than 800" in query or "above 800" in query:
+        filtered_df = df[df['Booking Value'] > 800]
+        st.write("**Rides with Booking Value > 800:**")
+        st.dataframe(filtered_df, use_container_width=True)
+        
+    elif "full dataset" in query or "table" in query or "raw data" in query or "show the dataset" in query:
+        st.write("**Full Dataset Table:**")
+        st.dataframe(df, use_container_width=True)
+        
+    else:
+        # Fallback response for unlisted/out-of-scope questions
+        st.error("Sorry, I am not in a position to answer the question.")
+
+# 6. Interactive Interface Options
+st.subheader("💬 Ask a Question")
+
+tab1, tab2 = st.tabs([" Type Question", " Select Question from List"])
+
+with tab1:
+    user_input = st.text_input("Enter your question below:", placeholder="e.g., What is the highest booking value?")
+    if st.button("Ask Question", key="btn_text"):
+        if user_input:
+            answer_question(user_input)
+        else:
+            st.warning("Please enter a question.")
+
+with tab2:
+    selected_q = st.selectbox("Choose one of the 10 questions:", list(ALLOWED_QUESTIONS.values()))
+    if st.button("Get Answer", key="btn_select"):
+        answer_question(selected_q)
 
-# Display data
-st.subheader("Dataset")
-st.dataframe(df)
 
-# Calculate average ride distance per vehicle type
-avg_distance = df.groupby("vehicle_type")["ride_distance"].mean().reset_index()
 
-st.subheader("Average Ride Distance by Vehicle Type")
-st.dataframe(avg_distance)
 
-# Visualization
-fig, ax = plt.subplots()
-ax.bar(avg_distance["vehicle_type"], avg_distance["ride_distance"], color="skyblue")
-ax.set_xlabel("Vehicle Type")
-ax.set_ylabel("Average Ride Distance")
-ax.set_title("Average Ride Distance per Vehicle Type")
 
-st.pyplot(fig)
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
 
-# Sample dataset
-data = {
-    "customer_id": [101, 102, 103, 104, 105, 106, 107, 108],
-    "Canceled_Rides_by_Customer": [2, 0, 5, 1, 3, 0, 4, 2]
-}
-df = pd.DataFrame(data)
 
-# Question
-st.header("Get the total number of cancelled rides by customers")
 
-# Display dataset
-st.subheader("Dataset")
-st.dataframe(df)
 
-# Calculate total cancelled rides
-total_cancelled = df["Canceled_Rides_by_Customer"].sum()
-
-st.subheader("Total Cancelled Rides")
-st.write(f"Total cancelled rides by customers: **{total_cancelled}**")
-
-# Visualization
-fig, ax = plt.subplots()
-ax.bar(df["customer_id"], df["Canceled_Rides_by_Customer"], color="salmon")
-ax.set_xlabel("Customer ID")
-ax.set_ylabel("Cancelled Rides")
-ax.set_title("Cancelled Rides by Each Customer")
-
-st.pyplot(fig)
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Sample dataset
-data = {
-    "customer_id": [301, 302, 303, 304, 305, 306, 307, 308],
-    "Booked_Rides": [25, 40, 12, 55, 33, 18, 47, 29]
-}
-df = pd.DataFrame(data)
-
-# Question
-st.header("List the top 5 customers who booked the highest number of rides")
-
-# Display dataset
-st.subheader("Dataset")
-st.dataframe(df)
-
-# Find top 5 customers
-top_customers = df.sort_values(by="Booked_Rides", ascending=False).head(5)
-
-st.subheader("Top 5 Customers by Booked Rides")
-st.dataframe(top_customers)
-
-# Visualization
-fig, ax = plt.subplots()
-ax.bar(top_customers["customer_id"].astype(str), top_customers["Booked_Rides"], color="green")
-ax.set_xlabel("Customer ID")
-ax.set_ylabel("Number of Rides Booked")
-ax.set_title("Top 5 Customers with Highest Bookings")
-
-st.pyplot(fig)
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Sample dataset
-data = {
-    "driver_id": [401, 402, 403, 404, 405],
-    "Cancelled_Personal": [2, 1, 0, 3, 2],
-    "Cancelled_CarIssues": [1, 0, 2, 1, 4]
-}
-df = pd.DataFrame(data)
-
-# Question
-st.header("Get the number of rides cancelled by drivers due to personal and car-related issues")
-
-# Display dataset
-st.subheader("Dataset")
-st.dataframe(df)
-
-# Calculate totals
-total_personal = df["Cancelled_Personal"].sum()
-total_car_issues = df["Cancelled_CarIssues"].sum()
-
-st.subheader("Total Cancelled Rides")
-st.write(f"Total cancelled due to personal issues: **{total_personal}**")
-st.write(f"Total cancelled due to car-related issues: **{total_car_issues}**")
-
-# Visualization
-fig, ax = plt.subplots()
-categories = ["Personal Issues", "Car-related Issues"]
-totals = [total_personal, total_car_issues]
-ax.bar(categories, totals, color=["blue", "red"])
-ax.set_ylabel("Number of Cancelled Rides")
-ax.set_title("Cancelled Rides by Reason")
-
-st.pyplot(fig)
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Sample dataset
-data = {
-    "booking_id": [501, 502, 503, 504, 505, 506],
-    "vehicle_type": ["Prime Sedan", "Prime Sedan", "Prime Sedan", "SUV", "Prime Sedan", "Prime Sedan"],
-    "driver_rating": [4.5, 3.8, 4.9, 4.2, 2.7, 5.0]
-}
-df = pd.DataFrame(data)
-
-# Question
-st.header("Find the maximum and minimum driver ratings for Prime Sedan bookings")
-
-# Display dataset
-st.subheader("Dataset")
-st.dataframe(df)
-
-# Filter only Prime Sedan bookings
-prime_sedan_df = df[df["vehicle_type"] == "Prime Sedan"]
-
-# Calculate max and min ratings
-max_rating = prime_sedan_df["driver_rating"].max()
-min_rating = prime_sedan_df["driver_rating"].min()
-
-st.subheader("Results")
-st.write(f"Maximum driver rating for Prime Sedan bookings: **{max_rating}**")
-st.write(f"Minimum driver rating for Prime Sedan bookings: **{min_rating}**")
-
-# Visualization
-fig, ax = plt.subplots()
-ax.bar(["Max Rating", "Min Rating"], [max_rating, min_rating], color=["green", "red"])
-ax.set_ylabel("Driver Rating")
-ax.set_title("Maximum and Minimum Driver Ratings for Prime Sedan Bookings")
-
-st.pyplot(fig)
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Sample dataset
-data = {
-    "ride_id": [601, 602, 603, 604, 605, 606],
-    "customer_id": [701, 702, 703, 704, 705, 706],
-    "payment_method": ["UPI", "Card", "Cash", "UPI", "Wallet", "UPI"],
-    "ride_distance": [12.5, 8.3, 5.0, 15.2, 7.1, 9.8]
-}
-df = pd.DataFrame(data)
-
-# Question
-st.header("Retrieve all rides where payment was made using UPI")
-
-# Display dataset
-st.subheader("Dataset")
-st.dataframe(df)
-
-# Filter rides with UPI payment
-upi_rides = df[df["payment_method"] == "UPI"]
-
-st.subheader("Rides Paid via UPI")
-st.dataframe(upi_rides)
-
-# Visualization
-fig, ax = plt.subplots()
-ax.bar(upi_rides["ride_id"].astype(str), upi_rides["ride_distance"], color="purple")
-ax.set_xlabel("Ride ID")
-ax.set_ylabel("Ride Distance")
-ax.set_title("UPI Payment Rides - Distance Distribution")
-
-st.pyplot(fig)
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Sample dataset
-data = {
-    "customer_id": [801, 802, 803, 804, 805, 806, 807],
-    "vehicle_type": ["Sedan", "SUV", "Sedan", "Hatchback", "SUV", "Sedan", "Hatchback"],
-    "customer_rating": [4.5, 3.9, 4.2, 3.5, 4.1, 4.8, 3.7]
-}
-df = pd.DataFrame(data)
-
-# Question
-st.header("Find the average customer rating per vehicle type")
-
-# Display dataset
-st.subheader("Dataset")
-st.dataframe(df)
-
-# Calculate average rating per vehicle type
-avg_rating = df.groupby("vehicle_type")["customer_rating"].mean().reset_index()
-
-st.subheader("Average Customer Rating by Vehicle Type")
-st.dataframe(avg_rating)
-
-# Visualization
-fig, ax = plt.subplots()
-ax.bar(avg_rating["vehicle_type"], avg_rating["customer_rating"], color="teal")
-ax.set_xlabel("Vehicle Type")
-ax.set_ylabel("Average Customer Rating")
-ax.set_title("Average Customer Rating per Vehicle Type")
-
-st.pyplot(fig)
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Sample dataset
-data = {
-    "ride_id": [701, 702, 703, 704, 705, 706],
-    "booking_status": ["Success", "Cancelled", "Success", "Success", "Cancelled", "Success"],
-    "booking_value": [250, 180, 320, 150, 200, 400]
-}
-df = pd.DataFrame(data)
-
-# Question
-st.header("Calculate the total booking value of rides completed successfully")
-
-# Display dataset
-st.subheader("Dataset")
-st.dataframe(df)
-
-# Filter successful rides
-successful_rides = df[df["booking_status"] == "Success"]
-
-# Calculate total booking value
-total_value = successful_rides["booking_value"].sum()
-
-st.subheader("Total Booking Value of Successful Rides")
-st.write(f"Total booking value: **₹{total_value}**")
-
-# Visualization
-fig, ax = plt.subplots()
-ax.bar(successful_rides["ride_id"].astype(str), successful_rides["booking_value"], color="seagreen")
-ax.set_xlabel("Ride ID")
-ax.set_ylabel("Booking Value (₹)")
-ax.set_title("Booking Value of Successful Rides")
-
-st.pyplot(fig)
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Sample dataset
-data = {
-    "ride_id": [801, 802, 803, 804, 805],
-    "customer_id": [901, 902, 903, 904, 905],
-    "ride_status": ["Incomplete", "Success", "Incomplete", "Cancelled", "Incomplete"],
-    "reason": ["Driver no-show", "Completed", "Payment failure", "Customer cancelled", "Car breakdown"]
-}
-df = pd.DataFrame(data)
-
-# Question
-st.header("List all incomplete rides along with the reason")
-
-# Display dataset
-st.subheader("Dataset")
-st.dataframe(df)
-
-# Filter incomplete rides
-incomplete_rides = df[df["ride_status"] == "Incomplete"]
-
-st.subheader("Incomplete Rides with Reasons")
-st.dataframe(incomplete_rides)
-
-# Visualization
-fig, ax = plt.subplots()
-reason_counts = incomplete_rides["reason"].value_counts()
-ax.bar(reason_counts.index, reason_counts.values, color="crimson")
-ax.set_xlabel("Reason")
-ax.set_ylabel("Number of Incomplete Rides")
-ax.set_title("Reasons for Incomplete Rides")
-
-st.pyplot(fig)
 
 
 
